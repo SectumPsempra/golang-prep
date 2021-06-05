@@ -10,15 +10,43 @@ import (
 
 	"github.com/SectumPsempra/golang-prep/controllers"
 	"github.com/nicholasjackson/env"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 var bindAddress = env.String("BIND_ADDRESS", false, ":9090", "Bind address for the server")
 
+func ConnectToMongo() (*mongo.Database, context.Context) {
+	client, err := mongo.NewClient(options.Client().ApplyURI("mongodb://127.0.0.1:27017"))
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
+	err = client.Connect(ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	database := client.Database("BooksCollection")
+
+	return database, ctx
+}
+
+type Book struct {
+	Name        string
+	PublisherID string
+	Cost        string
+	StartTime   string
+	EndTime     string
+}
+
 func main() {
 	env.Parse()
+	database, mctx := ConnectToMongo()
+
 	l := log.New(os.Stdout, "users-api", log.LstdFlags)
 
-	u := controllers.NewUser(l)
+	u := controllers.NewUser(l, database, mctx)
 
 	sm := http.NewServeMux()
 	sm.Handle("/", u)
