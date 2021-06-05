@@ -1,41 +1,49 @@
 package main
 
 import (
-	"fmt"
-	"io/ioutil"
+	"context"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"time"
+
+	"github.com/SectumPsempra/golang-prep/handlers"
 )
 
 func main() {
-	// HandleFunc is a convenience method on go http package
-	// it registers the function and the path on the single default servemux(http handler)
-	http.HandleFunc("/", func(rw http.ResponseWriter, r *http.Request) {
-		log.Println("Hello World")
-		// read the request
-		d, err := ioutil.ReadAll(r.Body)
+	l := log.New(os.Stdout, "product-api", log.LstdFlags)
 
+	hh := handlers.NewHello(l)
+	gg := handlers.NewGoodbye(l)
+
+	sm := http.NewServeMux()
+	sm.Handle("/", hh)
+	sm.Handle("/goodbye", gg)
+
+	// create a http server
+	s := &http.Server{
+		Addr:         ":9090",
+		Handler:      sm,
+		IdleTimeout:  120 * time.Second,
+		ReadTimeout:  1 * time.Second,
+		WriteTimeout: 1 * time.Second,
+	}
+
+	go func() {
+		err := s.ListenAndServe()
 		if err != nil {
-			// WriteHeader lets us specify the status code
-			// rw.WriteHeader(http.StatusBadRequest)
-			// rw.Write([]byte("OOps"))
-
-			// above two lines are equivalent to writing below code:
-			http.Error(rw, "Oops", http.StatusBadRequest)
-			return
+			l.Fatal(err)
 		}
+	}()
 
-		log.Printf("Data %s\n", d)
+	sigChan := make(chan os.Signal)
+	signal.Notify(sigChan, os.Interrupt)
+	signal.Notify(sigChan, os.Kill)
 
-		// print the response
-		fmt.Fprintf(rw, "Hello %s\n", d)
-	})
+	sig := <-sigChan
+	l.Println("Received terminate, graceful shutdown", sig)
 
-	http.HandleFunc("/abc", func(http.ResponseWriter, *http.Request) {
-		log.Println("Print abc, not hello world!!")
-	})
-
-	// constructs an http server and registers a default handler to it, second param
-	// is handler(if nil, will use default servemux)->
-	http.ListenAndServe(":9090", nil)
+	tc, _ := context.WithTimeout(context.Background(), 30*time.Second)
+	s.Shutdown(tc)
 }
